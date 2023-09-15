@@ -2,6 +2,8 @@ import pygame
 from typing import Tuple, Literal, List
 from enum import Enum
 
+# TODO: Implement the gravity jump
+
 
 class PyGameFileLogger:
     def log(self, data: List[Tuple[float, float]], file_name: str):
@@ -16,27 +18,69 @@ class PyGameShapesEnum(Enum):
     TRIANGLE = 3
 
 
+class PyGameCoordinatesTransform:
+    @staticmethod
+    def transform_coordinates_flip(coordinates: Tuple[float, float], h: float):
+        (x, y) = coordinates
+        return (x, h - y)
+
+
 class PyGame2DMotionEquations:
-    def __init__(self, x0: float, v0: float, gravity: float = 9.81):
+    def __init__(
+        self,
+        x0: float = 0,
+        y0: float = 0,
+        vx0: float = 0,
+        vy0: float = 0,
+        gravity: float = 9.81,
+    ):
+        """
+        Implements the 2D motion equations.
+
+        Args:
+            x0 (float, optional): Initial horizontal position in meters (default 0).
+            y0 (float, optional): Initial vertical position in meters (default 0).
+            vx0 (float, optional): Initial horizontal velocity in meters per second (default 0).
+            vy0 (float, optional): Initial vertical velocity in meters per second (default 0).
+            gravity (float, optional): Acceleration due to gravity in meters per second squared (default 9.81).
+
+        Attributes:
+            a (float): Acceleration due to gravity in meters per second squared.
+            x0 (float): Initial horizontal position in meters.
+            y0 (float): Initial vertical position in meters.
+            vx0 (float): Initial horizontal velocity in meters per second.
+            vy0 (float): Initial vertical velocity in meters per second.
+        """
         self.a = gravity
-        self.v0 = v0
         self.x0 = x0
+        self.y0 = y0
+        self.vx0 = vx0
+        self.vy0 = vy0
 
-    def get_position(self, t: float):
-        return 0.5 * self.v0 * (t**2) + self.v0 * t + self.x0
+    def get_x_position(self, t: float):
+        return (0.5 * self.a * t**2) + (self.vx0 * t) + self.x0
 
-    def get_velocity(self, t: float):
-        return (self.a * t) + self.x0
+    def get_y_position(self, t: float):
+        return (0.5 * self.a * t**2) + (self.vy0 * t) + self.y0
+
+    def get_x_velocity(self, t: float):
+        return self.a * t + self.vx0
+
+    def get_y_velocity(self, t: float):
+        return self.a * t + self.vy0
 
 
 class PyGameObjecMotion(PyGame2DMotionEquations, PyGameFileLogger):
-    def __init__(self, coords: Tuple, v0: float = 0, gravity: float = 9.81):
+    def __init__(
+        self, coords: Tuple, vx0: float = 0, vy0: float = 0, gravity: float = 9.81
+    ):
         """
         Initializes a new instance of the PhysicsObject class.
 
         Args:
             coords (Tuple): A tuple containing the initial coordinates (x, y) of the object.
-            v0 (float, optional): The initial velocity of the object (default is 0).
+            vx0 (float, optional): The initial horizontal velocity of the object (default is 0).
+            vy0 (float, optional): The initial vertical velocity of the object (default is 0).
             gravity (float, optional): The acceleration due to gravity (default is 9.81 m/s^2).
 
         Returns:
@@ -47,12 +91,14 @@ class PyGameObjecMotion(PyGame2DMotionEquations, PyGameFileLogger):
             metrics (dict): A dictionary containing metrics such as velocity and position data.
 
         Example:
-            To create a PhysicsObject with initial coordinates (2.0, 3.0):
+            To create a PhysicsObject with initial coordinates (2.0, 3.0),
+            initial horizontal velocity 4.0, initial vertical velocity 5.0,
+            and custom gravity 10.0:
             >>> initial_coords = (2.0, 3.0)
-            >>> obj = PhysicsObject(initial_coords)
+            >>> obj = PhysicsObject(initial_coords, vx0=4.0, vy0=5.0, gravity=10.0)
         """
 
-        super().__init__(coords[0], v0, gravity)
+        super().__init__(*coords, vx0, vy0, gravity)
         self.coords = coords
         self.metrics = {
             "velocity": [],
@@ -137,7 +183,7 @@ class PyGameObjecMotion(PyGame2DMotionEquations, PyGameFileLogger):
         pass
 
 
-class PyGameObject(PyGameObjecMotion):
+class PyGameObject(PyGameObjecMotion, PyGameCoordinatesTransform):
     DEFAULT_COLOR = (255, 0, 0)
 
     # ! Move this to a separate class later
@@ -152,7 +198,8 @@ class PyGameObject(PyGameObjecMotion):
         surface: pygame.Surface,
         coords: Tuple,
         shape: PyGameShapesEnum,
-        v0: float = 0,
+        vx0: float = 0,
+        vy0: float = 0,
         gravity: float = 9.81,
         **kwargs,
     ):
@@ -163,7 +210,8 @@ class PyGameObject(PyGameObjecMotion):
             surface (pygame.Surface): The pygame surface on which the object will be drawn.
             coords (Tuple): A tuple containing the initial coordinates (x, y) of the object.
             shape (PyGameShapesEnum): An enum representing the shape of the object.
-            v0 (float, optional): The initial velocity of the object (default is 0).
+            vx0 (float, optional): The initial horizontal velocity of the object (default is 0).
+            vy0 (float, optional): The initial vertical velocity of the object (default is 0).
             gravity (float, optional): The acceleration due to gravity (default is 9.81 m/s^2).
             **kwargs: Additional keyword arguments for custom options.
 
@@ -176,20 +224,24 @@ class PyGameObject(PyGameObjecMotion):
             options (dict): A dictionary containing custom options for the object.
 
         Example:
-            To create a PhysicsObject with a rectangle shape:
+            To create a PhysicsObject with a rectangle shape, on a pygame surface of size (800, 600):
             >>> surface = pygame.Surface((800, 600))
             >>> initial_coords = (400, 300)
             >>> shape = PyGameShapesEnum.RECTANGLE
             >>> obj = PhysicsObject(surface, initial_coords, shape)
         """
-
-        super().__init__(coords, v0, gravity)
+        super().__init__(coords, vx0, vy0, gravity)
         self.shape = self.get_pygame_shape[shape]
         self.surface = surface
         self.options = kwargs if len(kwargs.items()) else {}
 
     def draw(self):
-        return self.shape(self.surface, self.DEFAULT_COLOR, self.coords, **self.options)
+        # Flip the coordinates to match the pygame's coordinate system
+        # ! Change HEIGHT to a global variable as well as the WIDTH
+        flipped_coords = self.transform_coordinates_flip(self.coords, 600)
+        return self.shape(
+            self.surface, self.DEFAULT_COLOR, flipped_coords, **self.options
+        )
 
 
 class PygameApp:
@@ -217,27 +269,26 @@ class PygameApp:
         player_radius = 20
         player = PyGameObject(
             self.screen,
-            (self.width // 2, self.height - player_radius),
+            (self.width // 2, player_radius),
             PyGameShapesEnum.CIRCLE,
             radius=player_radius,
         )
 
-        start_time = self.clock.get_time()
-        end_time = 0
+        target_coordinates = (0, 0)
 
         while running:
             # Get the cursor position
-            x, y = self.get_cursor_position()
+            # x, y = self.get_cursor_position()
             # print(f"Cursor: ({x}, {y}) \n")
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    end_time = self.clock.get_time()
                     running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
-                        print("Voila !")
+                        target_coordinates = self.get_cursor_position()
+                        print(f"Shooting at {target_coordinates}")
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:
@@ -264,8 +315,7 @@ class PygameApp:
             # Update the screen 60 times per second
             self.clock.tick(60)
 
-        print(f"== GAME LASTED FOR {end_time - start_time} seconds")
-
+        #  Save the position metrics to a csv file
         player.log(player.metrics["position"], "position.csv")
 
         pygame.quit()
